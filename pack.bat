@@ -1,6 +1,6 @@
 @echo off
 set randomId=pack%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%
-set Pack_ver=0.66.4
+set Pack_ver=0.66.5
 
 ::IF NOT DEFINED PIDMD_ROOT echo.Wrong environment&exit /b
 
@@ -98,12 +98,13 @@ goto :eof
 	)
 	
 	SET _user=%PIDMD_USER%
-	if exist "rmpack_cmd.bat" call rmpack_cmd.bat
+	if exist "rmpack_cmd.bat" call rmpack_cmd.bat /int
 	SET PIDMD_USER=%_user%
 	
 	FOR /F "delims=*" %%f in (filetree.ini) do (
 		call :del %%f
 	)
+	if exist "rmpack_cmd.bat" call rmpack_cmd.bat /aft
 	popd
 	
 	rd /s /q %PIDMD_SYS%\PACK\%rm_item%
@@ -170,6 +171,9 @@ exit /b
 	
 	call logHE PACK INFO INSTALL#SP#%pack%-%packfile: =#Sp#%
 	
+	"%~dp0unzip.exe" -o "%packfile%" ___unpack_cmd.bat -d "%PIDMD_TMP%\" -o >nul 2>nul
+	if exist "%PIDMD_TMP%___unpack_cmd.bat" (call "%PIDMD_TMP%___unpack_cmd.bat" /int)
+	
 	echo Unpackage
 	"%~dp0unzip.exe" -o "%packfile%" -d %PIDMD_ROOT% >nul
 	if "%errorlevel%%"=="50" (
@@ -179,7 +183,7 @@ exit /b
 	)
 	
 	SET _user=%PIDMD_USER%
-	if exist "%PIDMD_ROOT%___unpack_cmd.bat" call "%PIDMD_ROOT%___unpack_cmd.bat"
+	if exist "%PIDMD_ROOT%___unpack_cmd.bat" call "%PIDMD_ROOT%___unpack_cmd.bat" /aft
 	SET PIDMD_USER=%_user%
 	
 	echo Copying package file tree
