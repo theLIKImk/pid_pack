@@ -1,6 +1,6 @@
 @echo off
 set randomId=pack%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%
-set Pack_ver=0.66.5
+set Pack_ver=0.70.0
 
 ::IF NOT DEFINED PIDMD_ROOT echo.Wrong environment&exit /b
 
@@ -128,19 +128,33 @@ goto :eof
 :install-n
 	call loadcfg "%PIDMD_TMP%DATA.INI"
 	echo.Package: %pack% [%version%]
+	echo.Author:  %author%
 	echo.         %info%
 	echo.
-	echo Pack Version:%version%
+	echo    - Pack Version:%version%
 	call loadcfg "%PIDMD_SYS%PACK\%PACK%\INFO.INI"
-	echo.@Installed Ver:%version%
+	echo.   - Installed Ver:%version%
 	call loadcfg "%PIDMD_TMP%DATA.INI"
+	echo.
+	echo.Depend:  %depend%
 exit /b
 
 :install-u
 	call loadcfg "%PIDMD_TMP%DATA.INI"		
 	echo.Package: %pack% [%version%]
+	echo.Author:  %author%
 	echo.         %info%
+	echo.
+	echo.Depend:  %depend%
 exit /b
+
+:install-check_depend
+	for %%d in (%depend%) do (
+		for /f "tokens=1,2 delims=:" %%p in ("%%d") do (
+			if not exist "%PIDMD_SYS%PACK\%%p" echo Not Found pack %%p-%%q,Abort & exit /b 1
+		)
+	)
+exit /b 0
 
 :install 
 	set packfile=%2
@@ -161,6 +175,9 @@ exit /b
 	for /f "skip=3 tokens=1,2,3,* delims= " %%1 in ('unzip.exe -l "%packfile%"') do echo.%%4>>"%PIDMD_TMP%\%randomId%"
 
 	if "%1"=="/install-update" (call :install-n) else (call :install-u)
+	
+	call :install-check_depend
+	if "%errorlevel%"=="1" goto :end
 	
 	if /i "%3"=="/Y" goto :skip_inact
 	set /p inact=Install?[y/N]
