@@ -1,6 +1,6 @@
 @echo off
 set randomId=pack%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%
-set Pack_ver=0.70.0
+set Pack_ver=0.71.0
 
 ::IF NOT DEFINED PIDMD_ROOT echo.Wrong environment&exit /b
 
@@ -76,8 +76,12 @@ goto :eof
 	if not exist "%PIDMD_SYS%\PACK\%rm_item%" echo Pack not exist! & goto end
 
 	call loadcfg "%PIDMD_SYS%\PACK\%rm_item%\info.INI"
-	echo.Pack: %pack% [%version%]
-	echo.      %info%
+	echo.Package: %pack% [%version%]
+	echo.Author:  %author%
+	echo.         %info%
+	echo.
+	echo.Depend:  %depend%
+	echo.
 
 	if /i "%3"=="/Y" goto :skip_rmact
 	set /p rmact=Remove?[y/N]
@@ -96,6 +100,11 @@ goto :eof
 		popd 
 		goto end
 	)
+	
+	REM 依赖检测
+	call log PACK INFO Check#sp#depends
+	for /f "delims=*" %%d in ('dir /B ^"%PIDMD_SYS%\PACK\%rm_item%\DEPENDS\^"') do set PACK_REMOVE_CHECK_DEPENDS=%%d
+	if not defined %PACK_REMOVE_CHECK_DEPENDS% call log PACK ERRO There#SP#are#SP#packages#SP#that#SP#depend#SP#on#SP#this,#SP#and#SP#they#SP#cannot#SP#be#SP#removed & popd & goto :end
 	
 	SET _user=%PIDMD_USER%
 	if exist "rmpack_cmd.bat" call rmpack_cmd.bat /int
@@ -127,6 +136,7 @@ goto :eof
 
 :install-n
 	call loadcfg "%PIDMD_TMP%DATA.INI"
+	set pack_update_ver1=%version%
 	echo.Package: %pack% [%version%]
 	echo.Author:  %author%
 	echo.         %info%
@@ -134,6 +144,7 @@ goto :eof
 	echo    - Pack Version:%version%
 	call loadcfg "%PIDMD_SYS%PACK\%PACK%\INFO.INI"
 	echo.   - Installed Ver:%version%
+	set pack_update_ver2=%version%
 	call loadcfg "%PIDMD_TMP%DATA.INI"
 	echo.
 	echo.Depend:  %depend%
@@ -148,12 +159,71 @@ exit /b
 	echo.Depend:  %depend%
 exit /b
 
+:install-depend_true
+	set pack_install_depend=true
+	set pack_install_depend_list=%pack_install_depend_list%,%pack%
+exit /b
+
+:install-depend_false
+	echo Pack %_pack% need version is %_Ver1%, but it is %version%
+	set pack_install_depend=false
+exit /b
+
+:install-check_depend_version_//_check
+	if "%_Ver1:~2%"=="%version%" call :install-depend_true & exit /b
+	call :install-depend_false & exit /b
+	
+:install-check_depend_version_gtr_check
+	call cprver.cmd %_Ver1:~2% %version%
+	if "%errorlevel%"=="2" call :install-depend_true & exit /b
+	call :install-depend_false & exit /b
+	
+:install-check_depend_version_geq_check
+	if "%_Ver1:~2%"=="%version%" call :install-depend_true & exit /b
+	call cprver.cmd %_Ver1:~2% %version%
+	if "%errorlevel%"=="2" call :install-depend_true & exit /b
+	call :install-depend_false & exit /b
+		
+:install-check_depend_version_--_check
+	call cprver.cmd %_Ver1:~2% %version%
+	if "%errorlevel%"=="1" call :install-depend_true & exit /b
+	call :install-depend_false & exit /b
+		
+:install-check_depend_version_-/check
+	if "%_Ver1:~2%"=="%version%" call :install-depend_true & exit /b
+	call cprver.cmd %_Ver1:~2% %version%
+	if "%errorlevel%"=="1" call :install-depend_true & exit /b
+	call :install-depend_false & exit /b
+		
+:install-check_depend_version
+	set _Ver1=%1
+	set _pack=%2
+	call loadcfg "%PIDMD_SYS%PACK\%2\info.ini"
+
+	REM 版本判断
+	if "%_Ver1:~0,2%"=="//" call :install-check_depend_version_//_check & exit /b
+	if "%_Ver1:~0,2%"=="++" call :install-check_depend_version_grt_check & exit /b
+	if "%_Ver1:~0,2%"=="+/" call :install-check_depend_version_geq_check & exit /b
+	if "%_Ver1:~0,2%"=="--" call :install-check_depend_version_--_check & exit /b
+	if "%_Ver1:~0,2%"=="-/" call :install-check_depend_version_-/_check & exit /b
+	if "%_Ver1%"=="$$" call :install-depend_true & exit /b
+	if "%_Ver1%"=="%version%" call :install-depend_true & exit /b
+	call :install-depend_false & exit /b
+
 :install-check_depend
 	for %%d in (%depend%) do (
 		for /f "tokens=1,2 delims=:" %%p in ("%%d") do (
 			if not exist "%PIDMD_SYS%PACK\%%p" echo Not Found pack %%p-%%q,Abort & exit /b 1
+			call :install-check_depend_version %%q %%p
 		)
 	)
+exit /b 0
+
+:install-update_check
+	if not defined pack_update_ver1 echo Version error & exit /b 1
+	if not defined pack_update_ver2 echo Version error & exit /b 1
+	call cprver.cmd %pack_update_ver1% %pack_update_ver2%
+	if "%errorlevel%"=="2" echo The version cannot be downgraded & exit /b 1
 exit /b 0
 
 :install 
@@ -173,12 +243,21 @@ exit /b 0
 	
 	echo load file tree........
 	for /f "skip=3 tokens=1,2,3,* delims= " %%1 in ('unzip.exe -l "%packfile%"') do echo.%%4>>"%PIDMD_TMP%\%randomId%"
-
+	
+	rem 区别显示
 	if "%1"=="/install-update" (call :install-n) else (call :install-u)
 	
-	call :install-check_depend
+	REM 更新版本检测
+	if "%1"=="/install-update" call :install-update_check
 	if "%errorlevel%"=="1" goto :end
 	
+	REM 依赖
+	call :install-check_depend
+	if "%errorlevel%"=="1" echo Abort & goto :end
+	if "%pack_install_depend%"=="false" echo Abort & goto :end
+	call loadcfg "%PIDMD_TMP%DATA.INI"
+	
+	REM 操作确认
 	if /i "%3"=="/Y" goto :skip_inact
 	set /p inact=Install?[y/N]
 	if /i not "%inact%"=="y" echo Abort & goto end
@@ -186,11 +265,14 @@ exit /b 0
 	
 	if /i not "%1"=="/install-update" if exist "%PIDMD_SYS%\PACK\%pack%" echo %pack% is installed & goto end
 	
+	REM 安装处理
 	call logHE PACK INFO INSTALL#SP#%pack%-%packfile: =#Sp#%
 	
+	REM 脚本
 	"%~dp0unzip.exe" -o "%packfile%" ___unpack_cmd.bat -d "%PIDMD_TMP%\" -o >nul 2>nul
 	if exist "%PIDMD_TMP%___unpack_cmd.bat" (call "%PIDMD_TMP%___unpack_cmd.bat" /int)
 	
+	REM 解压
 	echo Unpackage
 	"%~dp0unzip.exe" -o "%packfile%" -d %PIDMD_ROOT% >nul
 	if "%errorlevel%%"=="50" (
@@ -199,10 +281,12 @@ exit /b 0
 		goto end
 	)
 	
+	REM 脚本
 	SET _user=%PIDMD_USER%
 	if exist "%PIDMD_ROOT%___unpack_cmd.bat" call "%PIDMD_ROOT%___unpack_cmd.bat" /aft
 	SET PIDMD_USER=%_user%
 	
+	REM 复制信息文件
 	echo Copying package file tree
 	IF NOT EXIST "%PIDMD_SYS%\PACK\%pack%" mkdir "%PIDMD_SYS%\PACK\%pack%"
 	call logHE PACK INFO SET#SP#%pack%
@@ -215,6 +299,13 @@ exit /b 0
 	del /f /s /q "%PIDMD_ROOT%\___data.ini" >nul 2>nul
 	del /f /s /q "%PIDMD_ROOT%\___unpack_cmd.bat" >nul 2>nul
 	del /f /s /q "%PIDMD_ROOT%\___rmpack_cmd.bat" >nul 2>nul
+	
+	REM 依赖
+	call log PACK INFO SET#SP#%pack%#SP#DEPENDS
+	for %%d in (%pack_install_depend_list%) do (
+		if not exist "%PIDMD_SYS%PACK\%%d\DEPENDS" mkdir "%PIDMD_SYS%PACK\%%d\DEPENDS"
+		echo.>"%PIDMD_SYS%PACK\%%d\DEPENDS\%pack%"
+	)
 
 	echo Done
 	goto end
@@ -228,6 +319,9 @@ exit /b 0
 	set pack=
 	set version=
 	set info=
+	set depend=
+	set author=
+	set pack_install_depend=true
 	del "%PIDMD_TMP%\%randomId%" >nul  2>nul
 	del "%PIDMD_TMP%\DATA.INI" >nul  2>nul
 	del "%PIDMD_TMP%\___DATA.INI" >nul  2>nul
