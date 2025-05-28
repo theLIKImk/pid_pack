@@ -1,6 +1,6 @@
 @echo off
 set randomId=pack%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%
-set Pack_ver=0.71.0
+set Pack_ver=0.71.1
 
 ::IF NOT DEFINED PIDMD_ROOT echo.Wrong environment&exit /b
 
@@ -103,8 +103,11 @@ goto :eof
 	
 	REM 依赖检测
 	call log PACK INFO Check#sp#depends
+	if not exist "%PIDMD_SYS%\PACK\%rm_item%\DEPENDS" goto :_skip_depend_check
 	for /f "delims=*" %%d in ('dir /B ^"%PIDMD_SYS%\PACK\%rm_item%\DEPENDS\^"') do set PACK_REMOVE_CHECK_DEPENDS=%%d
-	if not defined %PACK_REMOVE_CHECK_DEPENDS% call log PACK ERRO There#SP#are#SP#packages#SP#that#SP#depend#SP#on#SP#this,#SP#and#SP#they#SP#cannot#SP#be#SP#removed & popd & goto :end
+	echo.%PACK_REMOVE_CHECK_DEPENDS%
+	if defined PACK_REMOVE_CHECK_DEPENDS call log PACK ERRO There#SP#are#SP#packages#SP#that#SP#depend#SP#on#SP#this,#SP#and#SP#they#SP#cannot#SP#be#SP#removed & popd & goto :end
+	:_skip_depend_check
 	
 	SET _user=%PIDMD_USER%
 	if exist "rmpack_cmd.bat" call rmpack_cmd.bat /int
@@ -206,6 +209,7 @@ exit /b
 	if "%_Ver1:~0,2%"=="+/" call :install-check_depend_version_geq_check & exit /b
 	if "%_Ver1:~0,2%"=="--" call :install-check_depend_version_--_check & exit /b
 	if "%_Ver1:~0,2%"=="-/" call :install-check_depend_version_-/_check & exit /b
+	if "%_Ver1:~0,2%"=="$$" call :install-depend_true & exit /b
 	if "%_Ver1%"=="$$" call :install-depend_true & exit /b
 	if "%_Ver1%"=="%version%" call :install-depend_true & exit /b
 	call :install-depend_false & exit /b
