@@ -1,8 +1,8 @@
 @echo off
 set randomId=pack%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%
-set Pack_ver=0.71.1
+set Pack_ver=0.71.2
 
-::IF NOT DEFINED PIDMD_ROOT echo.Wrong environment&exit /b
+IF NOT DEFINED PIDMD_ROOT echo.Wrong environment&exit /b
 
 if exist "%~dp0_tmp" goto :pack
 
@@ -103,11 +103,26 @@ goto :eof
 	
 	REM 依赖检测
 	call log PACK INFO Check#sp#depends
-	if not exist "%PIDMD_SYS%\PACK\%rm_item%\DEPENDS" goto :_skip_depend_check
-	for /f "delims=*" %%d in ('dir /B ^"%PIDMD_SYS%\PACK\%rm_item%\DEPENDS\^"') do set PACK_REMOVE_CHECK_DEPENDS=%%d
-	echo.%PACK_REMOVE_CHECK_DEPENDS%
-	if defined PACK_REMOVE_CHECK_DEPENDS call log PACK ERRO There#SP#are#SP#packages#SP#that#SP#depend#SP#on#SP#this,#SP#and#SP#they#SP#cannot#SP#be#SP#removed & popd & goto :end
+	if not exist "%PIDMD_SYS%\PACK\%rm_item%\DEPEND" goto :_skip_depend_check
+	for /f "delims=*" %%d in ('dir /B ^"%PIDMD_SYS%\PACK\%rm_item%\DEPEND\^"') do set PACK_REMOVE_CHECK_DEPENDS=%%d
+	echo.[%PACK_REMOVE_CHECK_DEPENDS%]
+	if defined PACK_REMOVE_CHECK_DEPENDS (
+		call log PACK ERRO There#SP#are#SP#packages#SP#that#SP#depend#SP#on#SP#this,#SP#and#SP#they#SP#cannot#SP#be#SP#removed
+		echo.
+		echo List:
+		dir /B "%PIDMD_SYS%\PACK\%rm_item%\DEPEND\"
+		popd
+		goto :end
+	)
 	:_skip_depend_check
+	
+	REM 依赖标识移除
+	if not exist "%PIDMD_SYS%\PACK\%rm_item%\USE" goto :_skip_pack_use_check
+	for /f "delims=*" %%d in ('dir /B ^"%PIDMD_SYS%\PACK\%rm_item%\USE\^"') do set PACK_REMOVE_USE_TAG=%%d
+	echo.[%PACK_REMOVE_USE_TAG%]
+	if not defined PACK_REMOVE_USE_TAG goto :_skip_pack_use_check
+	for /f "delims=*" %%d in ('dir /B ^"%PIDMD_SYS%\PACK\%rm_item%\USE\^"') do DEL /F /S /Q "%PIDMD_SYS%\PACK\%%d\DEPEND\%rm_item%">nul
+	:_skip_pack_use_check
 	
 	SET _user=%PIDMD_USER%
 	if exist "rmpack_cmd.bat" call rmpack_cmd.bat /int
@@ -305,10 +320,12 @@ exit /b 0
 	del /f /s /q "%PIDMD_ROOT%\___rmpack_cmd.bat" >nul 2>nul
 	
 	REM 依赖
-	call log PACK INFO SET#SP#%pack%#SP#DEPENDS
+	call log PACK INFO SET#SP#%pack%#SP#DEPEND
 	for %%d in (%pack_install_depend_list%) do (
-		if not exist "%PIDMD_SYS%PACK\%%d\DEPENDS" mkdir "%PIDMD_SYS%PACK\%%d\DEPENDS"
-		echo.>"%PIDMD_SYS%PACK\%%d\DEPENDS\%pack%"
+		if not exist "%PIDMD_SYS%PACK\%%d\DEPEND" mkdir "%PIDMD_SYS%PACK\%%d\DEPEND"
+		if not exist "%PIDMD_SYS%PACK\%pack%\USE" mkdir "%PIDMD_SYS%PACK\%pack%\USE"
+		echo.>"%PIDMD_SYS%PACK\%%d\DEPEND\%pack%"
+		echo.>"%PIDMD_SYS%PACK\%pack%\USE\%%d"
 	)
 
 	echo Done
@@ -326,6 +343,9 @@ exit /b 0
 	set depend=
 	set author=
 	set pack_install_depend=true
+	set pack_install_depend_list=
+	set PACK_REMOVE_USE_TAG=
+	set PACK_REMOVE_CHECK_DEPENDS=
 	del "%PIDMD_TMP%\%randomId%" >nul  2>nul
 	del "%PIDMD_TMP%\DATA.INI" >nul  2>nul
 	del "%PIDMD_TMP%\___DATA.INI" >nul  2>nul
