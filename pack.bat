@@ -1,6 +1,6 @@
 @echo off
 set randomId=pack%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%
-set Pack_ver=0.71.2
+set Pack_ver=0.71.3
 
 IF NOT DEFINED PIDMD_ROOT echo.Wrong environment&exit /b
 
@@ -131,6 +131,12 @@ goto :eof
 	FOR /F "delims=*" %%f in (filetree.ini) do (
 		call :del %%f
 	)
+	
+	if exist "%PIDMD_SDATA%\%PACK%" (
+		call logHE PACK INFO [%PACK%]REMOVE#SP#SDATA
+		del /f /s /q "%PIDMD_SDATA%\%PACK%" >NUL
+	)
+	
 	if exist "rmpack_cmd.bat" call rmpack_cmd.bat /aft
 	popd
 	
@@ -220,7 +226,7 @@ exit /b
 
 	REM 版本判断
 	if "%_Ver1:~0,2%"=="//" call :install-check_depend_version_//_check & exit /b
-	if "%_Ver1:~0,2%"=="++" call :install-check_depend_version_grt_check & exit /b
+	if "%_Ver1:~0,2%"=="++" call :install-check_depend_version_gtr_check & exit /b
 	if "%_Ver1:~0,2%"=="+/" call :install-check_depend_version_geq_check & exit /b
 	if "%_Ver1:~0,2%"=="--" call :install-check_depend_version_--_check & exit /b
 	if "%_Ver1:~0,2%"=="-/" call :install-check_depend_version_-/_check & exit /b
@@ -294,7 +300,7 @@ exit /b 0
 	REM 解压
 	echo Unpackage
 	"%~dp0unzip.exe" -o "%packfile%" -d %PIDMD_ROOT% >nul
-	if "%errorlevel%%"=="50" (
+	if "%errorlevel%"=="50" (
 		echo.Unpack Error
 		call logHE PACK ERRO Unpack#sp#Error:#SP#%packfile: =#Sp#%
 		goto end
