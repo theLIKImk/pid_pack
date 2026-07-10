@@ -1,6 +1,6 @@
 @echo off
 set randomId=pack%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%
-set Pack_ver=0.71.3
+set Pack_ver=0.71.4
 
 IF NOT DEFINED PIDMD_ROOT echo.Wrong environment&exit /b
 
@@ -24,6 +24,7 @@ echo.>"%PIDMD_TMP%\pack-lock"
 if /i "%1"=="/install" goto install
 if /i "%1"=="/install-update" goto install
 if /i "%1"=="/installed" goto installed
+if /i "%1"=="/reconfig" goto reconfig
 if /i "%1"=="/remove" goto remove
 if /i "%1"=="/help" goto help
 if /i "%1"=="/ver" goto ver
@@ -33,6 +34,17 @@ goto :end
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+:reconfig
+	set pack_reconfig_pack=%2
+	if not defined pack_reconfig_pack (echo is empty & goto :eof)
+	if not exist "%PIDMD_SYS%\PACK\%pack_reconfig_pack%" (call LOG PACK ERRO %pack_reconfig_pack%#SP#IS#SP#NOT#SP#EXIST& goto :eof)
+	if not exist "%PIDMD_SYS%\PACK\%pack_reconfig_pack%\packcfg_cmd.bat" (call LOG PACK WARN %pack_reconfig_pack%#SP#IS#SP#NOT#SP#RECONFIG& goto :eof)
+	
+	call LOG PACK INFO %pack_reconfig_pack%#SP#RECONFIG
+	call loadcfg "%PIDMD_SYS%\PACK\%pack_reconfig_pack%\info.ini"
+	call "%PIDMD_SYS%\PACK\%pack_reconfig_pack%\packcfg_cmd.bat" /rl
+goto :eof
 
 :ver
 	echo.%Pack_ver%
@@ -47,6 +59,7 @@ goto :end
 	echo.  /install ^<path^> [/y]
 	echo.  /install-update ^<path^> [/y]
 	echo.  /installed
+	echo.  /reconfig  ^<package^>
 	echo.  /remove ^<package^> [/y]
 	echo.  /ver
 	echo.
@@ -55,7 +68,7 @@ goto :end
 
 :installed
 	pushd %cd%
-	cd /d "%PIDMD_SYS%\PACK\
+	cd /d "%PIDMD_SYS%\PACK\"
 	
 	for /d %%i in (*) do (
 		call :listinfo %%i
@@ -103,14 +116,14 @@ goto :eof
 	
 	REM 依赖检测
 	call log PACK INFO Check#sp#depends
-	if not exist "%PIDMD_SYS%\PACK\%rm_item%\DEPEND" goto :_skip_depend_check
-	for /f "delims=*" %%d in ('dir /B ^"%PIDMD_SYS%\PACK\%rm_item%\DEPEND\^"') do set PACK_REMOVE_CHECK_DEPENDS=%%d
+	if not exist "%PIDMD_SYS%\PACK\%rm_item%\BDEPEND" goto :_skip_depend_check
+	for /f "delims=*" %%d in ('dir /B ^"%PIDMD_SYS%\PACK\%rm_item%\BDEPEND\^"') do set PACK_REMOVE_CHECK_DEPENDS=%%d
 	echo.[%PACK_REMOVE_CHECK_DEPENDS%]
 	if defined PACK_REMOVE_CHECK_DEPENDS (
 		call log PACK ERRO There#SP#are#SP#packages#SP#that#SP#depend#SP#on#SP#this,#SP#and#SP#they#SP#cannot#SP#be#SP#removed
 		echo.
 		echo List:
-		dir /B "%PIDMD_SYS%\PACK\%rm_item%\DEPEND\"
+		dir /B "%PIDMD_SYS%\PACK\%rm_item%\BDEPEND\"
 		popd
 		goto :end
 	)
@@ -121,22 +134,26 @@ goto :eof
 	for /f "delims=*" %%d in ('dir /B ^"%PIDMD_SYS%\PACK\%rm_item%\USE\^"') do set PACK_REMOVE_USE_TAG=%%d
 	echo.[%PACK_REMOVE_USE_TAG%]
 	if not defined PACK_REMOVE_USE_TAG goto :_skip_pack_use_check
-	for /f "delims=*" %%d in ('dir /B ^"%PIDMD_SYS%\PACK\%rm_item%\USE\^"') do DEL /F /S /Q "%PIDMD_SYS%\PACK\%%d\DEPEND\%rm_item%">nul
+	for /f "delims=*" %%d in ('dir /B ^"%PIDMD_SYS%\PACK\%rm_item%\USE\^"') do DEL /F /S /Q "%PIDMD_SYS%\PACK\%%d\BDEPEND\%rm_item%">nul
 	:_skip_pack_use_check
 	
+	REM 执行卸载脚本-之前
 	SET _user=%PIDMD_USER%
 	if exist "rmpack_cmd.bat" call rmpack_cmd.bat /int
 	SET PIDMD_USER=%_user%
 	
+	REM 删除包文件
 	FOR /F "delims=*" %%f in (filetree.ini) do (
 		call :del %%f
 	)
 	
+	REM 移除包的SDATA目录
 	if exist "%PIDMD_SDATA%\%PACK%" (
 		call logHE PACK INFO [%PACK%]REMOVE#SP#SDATA
 		del /f /s /q "%PIDMD_SDATA%\%PACK%" >NUL
 	)
 	
+	REM 执行卸载脚本-之后
 	if exist "rmpack_cmd.bat" call rmpack_cmd.bat /aft
 	popd
 	
@@ -293,7 +310,7 @@ exit /b 0
 	REM 安装处理
 	call logHE PACK INFO INSTALL#SP#%pack%-%packfile: =#Sp#%
 	
-	REM 脚本
+	REM 安装脚本-之前
 	"%~dp0unzip.exe" -o "%packfile%" ___unpack_cmd.bat -d "%PIDMD_TMP%\" -o >nul 2>nul
 	if exist "%PIDMD_TMP%___unpack_cmd.bat" (call "%PIDMD_TMP%___unpack_cmd.bat" /int)
 	
@@ -306,7 +323,7 @@ exit /b 0
 		goto end
 	)
 	
-	REM 脚本
+	REM 脚本-之后
 	SET _user=%PIDMD_USER%
 	if exist "%PIDMD_ROOT%___unpack_cmd.bat" call "%PIDMD_ROOT%___unpack_cmd.bat" /aft
 	SET PIDMD_USER=%_user%
@@ -316,21 +333,24 @@ exit /b 0
 	IF NOT EXIST "%PIDMD_SYS%\PACK\%pack%" mkdir "%PIDMD_SYS%\PACK\%pack%"
 	call logHE PACK INFO SET#SP#%pack%
 	
+	REM 信息文件处理
 	IF NOT EXIST "%PIDMD_SYS%\PACK\%pack%\filetree.ini" copy "%PIDMD_TMP%\%randomId%" "%PIDMD_SYS%\PACK\%pack%\filetree.ini" >nul
 	copy "%PIDMD_TMP%DATA.INI" "%PIDMD_SYS%PACK\%pack%\info.ini" >nul
 	copy "%PIDMD_TMP%___DATA.INI" "%PIDMD_SYS%PACK\%pack%\info.ini" >nul
 	if exist "%PIDMD_ROOT%___rmpack_cmd.bat" copy "%PIDMD_ROOT%___rmpack_cmd.bat" "%PIDMD_SYS%PACK\%pack%\rmpack_cmd.bat" >nul
+	if exist "%PIDMD_ROOT%___rmpack_cmd.bat" copy "%PIDMD_ROOT%___packcfg_cmd.bat" "%PIDMD_SYS%PACK\%pack%\packcfg_cmd.bat" >nul
 	del /f /s /q "%PIDMD_ROOT%\data.ini" >nul 2>nul
 	del /f /s /q "%PIDMD_ROOT%\___data.ini" >nul 2>nul
 	del /f /s /q "%PIDMD_ROOT%\___unpack_cmd.bat" >nul 2>nul
 	del /f /s /q "%PIDMD_ROOT%\___rmpack_cmd.bat" >nul 2>nul
+	del /f /s /q "%PIDMD_ROOT%\___packcfg_cmd.bat" >nul 2>nul
 	
 	REM 依赖
 	call log PACK INFO SET#SP#%pack%#SP#DEPEND
 	for %%d in (%pack_install_depend_list%) do (
-		if not exist "%PIDMD_SYS%PACK\%%d\DEPEND" mkdir "%PIDMD_SYS%PACK\%%d\DEPEND"
+		if not exist "%PIDMD_SYS%PACK\%%d\BDEPEND" mkdir "%PIDMD_SYS%PACK\%%d\BDEPEND"
 		if not exist "%PIDMD_SYS%PACK\%pack%\USE" mkdir "%PIDMD_SYS%PACK\%pack%\USE"
-		echo.>"%PIDMD_SYS%PACK\%%d\DEPEND\%pack%"
+		echo.>"%PIDMD_SYS%PACK\%%d\BDEPEND\%pack%"
 		echo.>"%PIDMD_SYS%PACK\%pack%\USE\%%d"
 	)
 
@@ -352,6 +372,7 @@ exit /b 0
 	set pack_install_depend_list=
 	set PACK_REMOVE_USE_TAG=
 	set PACK_REMOVE_CHECK_DEPENDS=
+	set pack_reconfig_pack=
 	del "%PIDMD_TMP%\%randomId%" >nul  2>nul
 	del "%PIDMD_TMP%\DATA.INI" >nul  2>nul
 	del "%PIDMD_TMP%\___DATA.INI" >nul  2>nul
