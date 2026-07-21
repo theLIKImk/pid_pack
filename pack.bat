@@ -1,6 +1,6 @@
 @echo off
 set randomId=pack%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%%random:~0,1%
-set Pack_ver=0.71.4
+set Pack_ver=0.71.5
 
 IF NOT DEFINED PIDMD_ROOT echo.Wrong environment&exit /b
 
@@ -28,12 +28,52 @@ if /i "%1"=="/reconfig" goto reconfig
 if /i "%1"=="/remove" goto remove
 if /i "%1"=="/help" goto help
 if /i "%1"=="/ver" goto ver
+if /i "%1"=="/size" goto size
+if /i "%1"=="/size-list" goto size
 
 goto :end
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+:size
+	if "%2"=="" goto :end
+	if /i "%1"=="/size-list" set pack_size_list=true
+	set pack_getpack=%2
+	if not exist "%PIDMD_SYS%PACK\%2" goto :end
+	
+	for /f "delims=" %%p in (%PIDMD_SYS%PACK\%pack_getpack%\filetree.ini) do (
+		call :size-check %%p
+	)
+	
+	if not defined pack_size_list (
+		echo.%pack_getsize%
+	) else (
+		echo.
+		echo.All: %pack_getsize%
+	)
+goto :end
+
+:size-check
+	SET PF_PATH=%*
+	SET PF_PATH=%PF_PATH:/=\%
+	
+	if "%PF_PATH:~-1%"=="\" goto :eof
+	if "%PF_PATH%"=="data.ini" goto :eof
+	if "%PF_PATH%"=="___data.ini" goto :eof
+	if "%PF_PATH%"=="___rmpack_cmd.bat" goto :eof
+	if "%PF_PATH%"=="___unpack_cmd.bat" goto :eof
+	if "%PF_PATH%"=="___packcfg_cmd.bat" goto :eof
+	
+	call :size-get %PIDMD_ROOT%%PF_PATH%
+exit /b
+
+:size-get
+	if "%~z1"=="" exit /b
+	if defined pack_size_list echo.%*: %~z1
+	set /a pack_getsize+=%~z1
+exit /b
 
 :reconfig
 	set pack_reconfig_pack=%2
@@ -61,6 +101,8 @@ goto :eof
 	echo.  /installed
 	echo.  /reconfig  ^<package^>
 	echo.  /remove ^<package^> [/y]
+	echo.  /size ^<package^>
+	echo.  /size-list ^<package^>
 	echo.  /ver
 	echo.
 	echo.Ver:%Pack_ver%
@@ -148,9 +190,9 @@ goto :eof
 	)
 	
 	REM 移除包的SDATA目录
-	if exist "%PIDMD_SDATA%\%PACK%" (
-		call logHE PACK INFO [%PACK%]REMOVE#SP#SDATA
-		del /f /s /q "%PIDMD_SDATA%\%PACK%" >NUL
+	if exist "%PIDMD_SDATA%\%PACK%\" (
+		call log PACK INFO REMOVE#SP#%PACK%#SP#SDATA
+		rmdir /s /q "%PIDMD_SDATA%\%PACK%" >NUL
 	)
 	
 	REM 执行卸载脚本-之后
@@ -167,6 +209,7 @@ goto :eof
 	SET RM_PATH=%RM_PATH:/=\%
 	
 	if "%RM_PATH:~-1%"=="\" goto :eof
+	if "%RM_PATH:~0,10%"=="SYS\SDATA\" goto :eof
 	
 	call logHE PACK INFO [%PACK%]REMOVE#SP#%PIDMD_ROOT: =#sp#%\%RM_PATH: =#sp#%
 	
@@ -373,6 +416,9 @@ exit /b 0
 	set PACK_REMOVE_USE_TAG=
 	set PACK_REMOVE_CHECK_DEPENDS=
 	set pack_reconfig_pack=
+	set pack_getpack=
+	set pack_getsize=
+	set pack_size_list=
 	del "%PIDMD_TMP%\%randomId%" >nul  2>nul
 	del "%PIDMD_TMP%\DATA.INI" >nul  2>nul
 	del "%PIDMD_TMP%\___DATA.INI" >nul  2>nul
